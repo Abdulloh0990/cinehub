@@ -3,7 +3,7 @@ import React, {
 } from 'react';
 
 /* ═══════════════════════════════════════════════
-   SUPABASE CONFIG
+   CONFIG
 ═══════════════════════════════════════════════ */
 const CFG_KEY  = 'cinehub_sb_cfg';
 const SESS_KEY = 'cinehub_session';
@@ -12,8 +12,6 @@ const PER_PAGE   = 24;
 const TMDB_KEY  = '9a0958e65913cb6442245e147254971f';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMG  = 'https://image.tmdb.org/t/p';
-const KODIK_TOKEN = '447d179e875efe44217f20d1ee2146be';
-const KODIK_API = 'https://kodikapi.com';
 
 const TMDB_GENRE_MAP = {
   28:'action', 12:'adventure', 16:'animation', 35:'comedy', 80:'crime',
@@ -21,14 +19,12 @@ const TMDB_GENRE_MAP = {
   27:'horror', 10402:'musical', 9648:'mystery', 10749:'romance', 878:'sci-fi',
   53:'thriller', 10752:'war', 37:'western',
 };
-
 const GENRE_TO_TMDB = {
   action:28, adventure:12, animation:16, comedy:35, crime:80,
   documentary:99, drama:18, fantasy:14, history:36, horror:27,
   musical:10402, mystery:9648, romance:10749, 'sci-fi':878,
   thriller:53, war:10752, western:37,
 };
-
 const toTmdbLang = (l) => l === 'en' ? 'en-US' : l === 'ru' ? 'ru-RU' : 'ru-RU';
 
 function normalizeTMDB(m) {
@@ -36,29 +32,21 @@ function normalizeTMDB(m) {
   const genres = (m.genre_ids ?? m.genres?.map(g => g.id) ?? [])
     .map(id => TMDB_GENRE_MAP[id]).filter(Boolean);
   return {
-    id:               `tmdb_${m.id}`,
-    tmdb_id:          m.id,
-    imdb_code:        m.imdb_id ?? null,
-    title:            m.title ?? m.original_title ?? '',
-    year,
-    rating:           m.vote_average ? parseFloat(m.vote_average.toFixed(1)) : 0,
-    runtime:          m.runtime ?? 0,
-    language:         m.original_language ?? 'en',
-    genres,
-    description_full: m.overview ?? '',
-    summary:          m.overview ?? '',
-    medium_cover_image:        m.poster_path  ? `${TMDB_IMG}/w400${m.poster_path}`  : '',
-    large_cover_image:         m.poster_path  ? `${TMDB_IMG}/w780${m.poster_path}`  : '',
-    background_image_original: m.backdrop_path? `${TMDB_IMG}/original${m.backdrop_path}`:'',
-    background_image:          m.backdrop_path? `${TMDB_IMG}/w1280${m.backdrop_path}`:'',
-    torrents: [],
-    _source: 'tmdb',
+    id: `tmdb_${m.id}`, tmdb_id: m.id, imdb_code: m.imdb_id ?? null,
+    title: m.title ?? m.original_title ?? '', year,
+    rating: m.vote_average ? parseFloat(m.vote_average.toFixed(1)) : 0,
+    runtime: m.runtime ?? 0, language: m.original_language ?? 'en',
+    genres, description_full: m.overview ?? '', summary: m.overview ?? '',
+    medium_cover_image:        m.poster_path   ? `${TMDB_IMG}/w400${m.poster_path}`   : '',
+    large_cover_image:         m.poster_path   ? `${TMDB_IMG}/w780${m.poster_path}`   : '',
+    background_image_original: m.backdrop_path ? `${TMDB_IMG}/original${m.backdrop_path}` : '',
+    background_image:          m.backdrop_path ? `${TMDB_IMG}/w1280${m.backdrop_path}` : '',
+    torrents: [], _source: 'tmdb',
   };
 }
 
 const apiCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
-
 async function tmdbFetch(path, lang = 'en') {
   const key = `${path}|${lang}`;
   const cached = apiCache.get(key);
@@ -86,30 +74,6 @@ async function getImdbId(tmdbId) {
     imdbCache.set(tmdbId, id);
     return id;
   } catch { return null; }
-}
-
-/* ── Kodik: fetch ALL translations for a movie ── */
-const kodikCache = new Map();
-async function kodikSearchAll(imdbId, tmdbId) {
-  const cacheKey = `${imdbId ?? ''}_${tmdbId ?? ''}`;
-  if (kodikCache.has(cacheKey)) return kodikCache.get(cacheKey);
-  try {
-    const queries = [];
-    if (imdbId) queries.push(fetch(`${KODIK_API}/search?token=${KODIK_TOKEN}&imdb_id=${imdbId}&with_material_data=true&limit=100`).then(r=>r.json()).catch(()=>null));
-    if (tmdbId)  queries.push(fetch(`${KODIK_API}/search?token=${KODIK_TOKEN}&kinopoisk_id=${tmdbId}&with_material_data=true&limit=100`).then(r=>r.json()).catch(()=>null));
-    const results = await Promise.all(queries);
-    const seen = new Set();
-    const items = [];
-    for (const d of results) {
-      for (const r of (d?.results ?? [])) {
-        const key = r.translation?.id ?? r.link;
-        if (!seen.has(key)) { seen.add(key); items.push(r); }
-      }
-    }
-    kodikCache.set(cacheKey, items);
-    setTimeout(() => kodikCache.delete(cacheKey), CACHE_TTL);
-    return items;
-  } catch { return []; }
 }
 
 const imgCache = new Set();
@@ -158,28 +122,43 @@ const LS = {
 };
 
 /* ═══════════════════════════════════════════════
-   PLAYER SOURCES
+   WATCH LANGUAGES + PLAYERS
 ═══════════════════════════════════════════════ */
-const PLAYERS = [
-  { id:'kodik',   n:'Kodik',       kodik:true,  url: () => null },
-  { id:'vidsrc',  n:'VidSrc',      kodik:false, url: (imdb, tmdb) => `https://vidsrc.pro/embed/movie/${tmdb}` },
-  { id:'vicu',    n:'VidSrc.icu',  kodik:false, url: (imdb, tmdb) => `https://vidsrc.icu/embed/movie/${imdb ?? tmdb}` },
-  { id:'videasy', n:'Videasy',     kodik:false, url: (imdb, tmdb) => `https://player.videasy.net/movie/${tmdb}` },
-  { id:'embedsu', n:'Embed.su',    kodik:false, url: (imdb, tmdb) => `https://embed.su/embed/movie/${imdb ?? tmdb}` },
-  { id:'2embed',  n:'2Embed',      kodik:false, url: (imdb, tmdb) => `https://www.2embed.cc/embed/${imdb ?? tmdb}` },
+const WATCH_LANGS = [
+  { id:'en', flag:'🇬🇧', label:'English',  short:'EN', color:'#3b82f6' },
+  { id:'ru', flag:'🇷🇺', label:'Русский',  short:'RU', color:'#ef4444' },
+  { id:'uz', flag:'🇺🇿', label:"O'zbek",   short:'UZ', color:'#22c55e' },
 ];
 
-/* ── Language flags / labels ── */
-const LANG_META = {
-  'Русский':      { flag:'🇷🇺', short:'RU' },
-  'Украинский':   { flag:'🇺🇦', short:'UA' },
-  'English':      { flag:'🇬🇧', short:'EN' },
-  'Английский':   { flag:'🇬🇧', short:'EN' },
-  'Турецкий':     { flag:'🇹🇷', short:'TR' },
-  'Казахский':    { flag:'🇰🇿', short:'KZ' },
-  'Узбекский':    { flag:'🇺🇿', short:'UZ' },
-  'Таджикский':   { flag:'🇹🇯', short:'TJ' },
-  'Азербайджанский':{ flag:'🇦🇿', short:'AZ' },
+/* Working embed players — minimal ads, real content */
+const PLAYERS_MAP = {
+  en: [
+    { id:'vidsrcicu',  n:'VidSrc.icu',   url:(i,t)=>`https://vidsrc.icu/embed/movie/${i??t}` },
+    { id:'moviesapi',  n:'MoviesAPI',     url:(i,t)=>i?`https://moviesapi.club/movie/${i}`:null },
+    { id:'smashystr',  n:'SmashyStream',  url:(i,t)=>`https://player.smashy.stream/movie/${t}` },
+    { id:'videasy',    n:'Videasy',       url:(i,t)=>`https://player.videasy.net/movie/${t}` },
+    { id:'multiembed', n:'MultiEmbed',    url:(i,t)=>`https://multiembed.mov/?video_id=${t}&tmdb=1` },
+    { id:'embedsu',    n:'Embed.su',      url:(i,t)=>`https://embed.su/embed/movie/${i??t}` },
+    { id:'2embedsk',   n:'2Embed.skin',   url:(i,t)=>`https://www.2embed.skin/embed/${i??t}` },
+  ],
+  ru: [
+    { id:'hdvb',       n:'HDVB',          url:(i,t)=>`https://bazon.cc/film/${t}?poster=1` },
+    { id:'alloha',     n:'Alloha',        url:(i,t)=>`https://sansa.newplayjj.com:9443/?token=04941506662b49d8a6d8571ef04652fa&tmdb=${t}&type=movie` },
+    { id:'voidboost',  n:'VoidBoost',     url:(i,t)=>i?`https://voidboost.net/embed/${i}`:null },
+    { id:'vidsrcicu',  n:'VidSrc.icu',    url:(i,t)=>`https://vidsrc.icu/embed/movie/${i??t}` },
+    { id:'smashystr',  n:'SmashyStream',  url:(i,t)=>`https://player.smashy.stream/movie/${t}` },
+    { id:'videasy',    n:'Videasy',       url:(i,t)=>`https://player.videasy.net/movie/${t}` },
+    { id:'multiembed', n:'MultiEmbed',    url:(i,t)=>`https://multiembed.mov/?video_id=${t}&tmdb=1` },
+  ],
+  uz: [
+    { id:'vidsrcicu',  n:'VidSrc.icu',    url:(i,t)=>`https://vidsrc.icu/embed/movie/${i??t}` },
+    { id:'moviesapi',  n:'MoviesAPI',     url:(i,t)=>i?`https://moviesapi.club/movie/${i}`:null },
+    { id:'smashystr',  n:'SmashyStream',  url:(i,t)=>`https://player.smashy.stream/movie/${t}` },
+    { id:'videasy',    n:'Videasy',       url:(i,t)=>`https://player.videasy.net/movie/${t}` },
+    { id:'alloha',     n:'Alloha',        url:(i,t)=>`https://sansa.newplayjj.com:9443/?token=04941506662b49d8a6d8571ef04652fa&tmdb=${t}&type=movie` },
+    { id:'multiembed', n:'MultiEmbed',    url:(i,t)=>`https://multiembed.mov/?video_id=${t}&tmdb=1` },
+    { id:'2embedsk',   n:'2Embed.skin',   url:(i,t)=>`https://www.2embed.skin/embed/${i??t}` },
+  ],
 };
 
 /* ═══════════════════════════════════════════════
@@ -197,89 +176,90 @@ const THEMES = {
 };
 
 const GENRES = [
-  { id:'action',       e:'⚡', uz:"Jangovar",   ru:'Боевик',        en:'Action'      },
-  { id:'comedy',       e:'😂', uz:"Komediya",   ru:'Комедия',       en:'Comedy'      },
-  { id:'drama',        e:'🎭', uz:"Drama",      ru:'Драма',         en:'Drama'       },
-  { id:'horror',       e:'👻', uz:"Qoʻrqinch",  ru:'Ужасы',         en:'Horror'      },
-  { id:'thriller',     e:'🔪', uz:"Triller",    ru:'Триллер',       en:'Thriller'    },
-  { id:'sci-fi',       e:'🚀', uz:"Ilmiy",      ru:'Фantastika',    en:'Sci-Fi'      },
-  { id:'animation',    e:'🎨', uz:"Multfilm",   ru:'Анимация',      en:'Animation'   },
-  { id:'romance',      e:'❤️', uz:"Sevgi",      ru:'Мелодрама',     en:'Romance'     },
-  { id:'crime',        e:'🕵️', uz:"Jinoyat",    ru:'Криминал',      en:'Crime'       },
+  { id:'action',       e:'⚡', uz:"Jangovar",   ru:'Боевик',         en:'Action'      },
+  { id:'comedy',       e:'😂', uz:"Komediya",   ru:'Комедия',        en:'Comedy'      },
+  { id:'drama',        e:'🎭', uz:"Drama",      ru:'Драма',          en:'Drama'       },
+  { id:'horror',       e:'👻', uz:"Qoʻrqinch",  ru:'Ужасы',          en:'Horror'      },
+  { id:'thriller',     e:'🔪', uz:"Triller",    ru:'Триллер',        en:'Thriller'    },
+  { id:'sci-fi',       e:'🚀', uz:"Ilmiy",      ru:'Fantastika',     en:'Sci-Fi'      },
+  { id:'animation',    e:'🎨', uz:"Multfilm",   ru:'Анимация',       en:'Animation'   },
+  { id:'romance',      e:'❤️', uz:"Sevgi",      ru:'Мелодрама',      en:'Romance'     },
+  { id:'crime',        e:'🕵️', uz:"Jinoyat",    ru:'Криминал',       en:'Crime'       },
   { id:'adventure',    e:'🗺️', uz:"Sarguzasht", ru:'Приключения',   en:'Adventure'   },
-  { id:'fantasy',      e:'🧙', uz:"Fantastika", ru:'Фэнтези',       en:'Fantasy'     },
-  { id:'biography',    e:'📖', uz:"Biografiya", ru:'Биография',     en:'Biography'   },
-  { id:'history',      e:'🏛️', uz:"Tarixiy",    ru:'Исторический',  en:'History'     },
-  { id:'western',      e:'🤠', uz:"Western",    ru:'Вестерн',       en:'Western'     },
-  { id:'war',          e:'🪖', uz:"Urush",      ru:'Военный',       en:'War'         },
-  { id:'documentary',  e:'🎥', uz:"Hujjatli",   ru:'Документальный',en:'Documentary' },
-  { id:'mystery',      e:'🔮', uz:"Sirli",      ru:'Детектив',      en:'Mystery'     },
-  { id:'musical',      e:'🎵', uz:"Musical",    ru:'Мюзикл',        en:'Musical'     },
+  { id:'fantasy',      e:'🧙', uz:"Fantastika", ru:'Фэнтези',        en:'Fantasy'     },
+  { id:'biography',    e:'📖', uz:"Biografiya", ru:'Биография',      en:'Biography'   },
+  { id:'history',      e:'🏛️', uz:"Tarixiy",    ru:'Исторический',   en:'History'     },
+  { id:'western',      e:'🤠', uz:"Western",    ru:'Вестерн',        en:'Western'     },
+  { id:'war',          e:'🪖', uz:"Urush",      ru:'Военный',        en:'War'         },
+  { id:'documentary',  e:'🎥', uz:"Hujjatli",   ru:'Документальный', en:'Documentary' },
+  { id:'mystery',      e:'🔮', uz:"Sirli",      ru:'Детектив',       en:'Mystery'     },
+  { id:'musical',      e:'🎵', uz:"Musical",    ru:'Мюзикл',         en:'Musical'     },
 ];
 
 const T = {
-  home:     { uz:'Bosh sahifa', ru:'Главная',    en:'Home'      },
-  browse:   { uz:'Katalog',     ru:'Каталог',    en:'Browse'    },
-  favs:     { uz:'Sevimlilar',  ru:'Избранное',  en:'Favorites' },
-  watchlist:{ uz:'Roʻyxat',     ru:'Список',     en:'Watchlist' },
-  library:  { uz:'Kutubxona',   ru:'Библиотека', en:'Library'   },
-  history:  { uz:'Tarix',       ru:'История',    en:'History'   },
-  stats:    { uz:'Statistika',  ru:'Статистика', en:'Stats'     },
-  search:   { uz:'Qidirish',    ru:'Поиск',      en:'Search'    },
-  popular:  { uz:'Mashhur',     ru:'Популярное', en:'Popular'   },
-  topRated: { uz:'Top Reyting', ru:'Топ рейтинг',en:'Top Rated' },
-  latest:   { uz:'Yangi',       ru:'Новинки',    en:'Latest'    },
-  watch:    { uz:'Koʻrish',     ru:'Смотреть',   en:'Watch'     },
-  login:    { uz:'Kirish',      ru:'Войти',      en:'Sign In'   },
-  register: { uz:'Roʻyxatdan',  ru:'Регистрация',en:'Register'  },
-  profile:  { uz:'Profil',      ru:'Профиль',    en:'Profile'   },
-  settings: { uz:'Sozlamalar',  ru:'Настройки',  en:'Settings'  },
-  logout:   { uz:'Chiqish',     ru:'Выйти',      en:'Sign Out'  },
-  rating:   { uz:'Reyting',     ru:'Рейтинг',    en:'Rating'    },
-  duration: { uz:'Davomiyligi', ru:'Длительность',en:'Duration' },
-  synopsis: { uz:'Qisqacha',    ru:'Описание',   en:'Synopsis'  },
-  filters:  { uz:'Filtrlar',    ru:'Фильтры',    en:'Filters'   },
-  allGenres:{ uz:'Barcha janrlar',ru:'Все жанры',en:'All Genres'},
-  minRating:{ uz:'Min reyting', ru:'Мин. рейтинг',en:'Min Rating'},
-  year:     { uz:'Yil',         ru:'Год',        en:'Year'      },
-  all:      { uz:'Barchasi',    ru:'Все',        en:'All'       },
-  apply:    { uz:'Qoʻllash',    ru:'Применить',  en:'Apply'     },
-  reset:    { uz:'Tozalash',    ru:'Сброс',      en:'Reset'     },
-  watched:  { uz:'Koʻrildi',    ru:'Просмотрено',en:'Watched'   },
-  watching: { uz:'Koʻrilmoqda', ru:'Смотрю',     en:'Watching'  },
-  planned:  { uz:'Rejada',      ru:'В планах',   en:'Planned'   },
-  addFav:   { uz:'Sevimliga',   ru:'В избранное',en:'Favorite'  },
-  addList:  { uz:'Roʻyxatga',   ru:'В список',   en:'Watchlist' },
-  notFound: { uz:'Topilmadi',   ru:'Не найдено', en:'Not found' },
-  films:    { uz:'film',        ru:'фильмов',    en:'films'     },
-  minutes:  { uz:'daqiqa',      ru:'мин',        en:'min'       },
-  share:    { uz:'Ulashish',    ru:'Поделиться', en:'Share'     },
-  note:     { uz:'Eslatma',     ru:'Заметка',    en:'Note'      },
-  theme:    { uz:'Mavzu',       ru:'Тема',       en:'Theme'     },
-  language: { uz:'Til',         ru:'Язык',       en:'Language'  },
-  player:   { uz:'Pleyer',      ru:'Плеер',      en:'Player'    },
+  home:      { uz:'Bosh sahifa', ru:'Главная',        en:'Home'       },
+  browse:    { uz:'Katalog',     ru:'Каталог',         en:'Browse'     },
+  favs:      { uz:'Sevimlilar',  ru:'Избранное',       en:'Favorites'  },
+  watchlist: { uz:'Roʻyxat',     ru:'Список',          en:'Watchlist'  },
+  library:   { uz:'Kutubxona',   ru:'Библиотека',      en:'Library'    },
+  history:   { uz:'Tarix',       ru:'История',         en:'History'    },
+  stats:     { uz:'Statistika',  ru:'Статистика',      en:'Stats'      },
+  search:    { uz:'Qidirish',    ru:'Поиск',           en:'Search'     },
+  popular:   { uz:'Mashhur',     ru:'Популярное',      en:'Popular'    },
+  topRated:  { uz:'Top Reyting', ru:'Топ рейтинг',     en:'Top Rated'  },
+  latest:    { uz:'Yangi',       ru:'Новинки',         en:'Latest'     },
+  watch:     { uz:'Koʻrish',     ru:'Смотреть',        en:'Watch'      },
+  login:     { uz:'Kirish',      ru:'Войти',           en:'Sign In'    },
+  register:  { uz:'Roʻyxatdan',  ru:'Регистрация',     en:'Register'   },
+  profile:   { uz:'Profil',      ru:'Профиль',         en:'Profile'    },
+  settings:  { uz:'Sozlamalar',  ru:'Настройки',       en:'Settings'   },
+  logout:    { uz:'Chiqish',     ru:'Выйти',           en:'Sign Out'   },
+  rating:    { uz:'Reyting',     ru:'Рейтинг',         en:'Rating'     },
+  duration:  { uz:'Davomiyligi', ru:'Длительность',    en:'Duration'   },
+  synopsis:  { uz:'Qisqacha',    ru:'Описание',        en:'Synopsis'   },
+  filters:   { uz:'Filtrlar',    ru:'Фильтры',         en:'Filters'    },
+  allGenres: { uz:'Barcha janrlar',ru:'Все жанры',     en:'All Genres' },
+  minRating: { uz:'Min reyting', ru:'Мин. рейтинг',   en:'Min Rating' },
+  year:      { uz:'Yil',         ru:'Год',             en:'Year'       },
+  all:       { uz:'Barchasi',    ru:'Все',             en:'All'        },
+  apply:     { uz:'Qoʻllash',    ru:'Применить',       en:'Apply'      },
+  reset:     { uz:'Tozalash',    ru:'Сброс',           en:'Reset'      },
+  watched:   { uz:'Koʻrildi',    ru:'Просмотрено',     en:'Watched'    },
+  watching:  { uz:'Koʻrilmoqda', ru:'Смотрю',          en:'Watching'   },
+  planned:   { uz:'Rejada',      ru:'В планах',        en:'Planned'    },
+  addFav:    { uz:'Sevimliga',   ru:'В избранное',     en:'Favorite'   },
+  addList:   { uz:'Roʻyxatga',   ru:'В список',        en:'Watchlist'  },
+  notFound:  { uz:'Topilmadi',   ru:'Не найдено',      en:'Not found'  },
+  films:     { uz:'film',        ru:'фильмов',         en:'films'      },
+  minutes:   { uz:'daqiqa',      ru:'мин',             en:'min'        },
+  share:     { uz:'Ulashish',    ru:'Поделиться',      en:'Share'      },
+  note:      { uz:'Eslatma',     ru:'Заметка',         en:'Note'       },
+  theme:     { uz:'Mavzu',       ru:'Тема',            en:'Theme'      },
+  language:  { uz:'Til',         ru:'Язык',            en:'Language'   },
+  player:    { uz:'Pleyer',      ru:'Плеер',           en:'Player'     },
   yourRating:{ uz:'Sizning bahoyingiz',ru:'Ваша оценка',en:'Your rating'},
-  achievements:{ uz:'Yutuqlar', ru:'Достижения', en:'Achievements'},
-  completed:{ uz:'Tugatildi',   ru:'Завершено',  en:'Completed' },
-  random:   { uz:'Tasodifiy',   ru:'Случайный',  en:'Random'    },
-  export:   { uz:'Eksport',     ru:'Экспорт',    en:'Export'    },
-  import:   { uz:'Import',      ru:'Импорт',     en:'Import'    },
-  data:     { uz:'Malumotlar',  ru:'Данные',     en:'Data'      },
-  name:     { uz:'Ism',         ru:'Имя',        en:'Name'      },
-  bio:      { uz:'Haqida',      ru:'О себе',     en:'Bio'       },
-  save:     { uz:'Saqlash',     ru:'Сохранить',  en:'Save'      },
-  signInToUse:{ uz:'Kirish kerak',ru:'Требуется вход',en:'Sign in required'},
-  level:    { uz:'Daraja',      ru:'Уровень',    en:'Level'     },
-  prevPage: { uz:'Oldingi',     ru:'Назад',      en:'Prev'      },
-  nextPage: { uz:'Keyingi',     ru:'Вперёд',     en:'Next'      },
-  page:     { uz:'Bet',         ru:'Стр.',       en:'Page'      },
-  dubbing:  { uz:'Ovoz berish', ru:'Озвучка',    en:'Dubbing'   },
-  original: { uz:'Asl nusxa',   ru:'Оригинал',   en:'Original'  },
-  noTrans:  { uz:'Tarjima topilmadi', ru:'Переводы не найдены', en:'No translations found' },
-  loading:  { uz:'Yuklanmoqda…', ru:'Загрузка…', en:'Loading…'  },
-  source:   { uz:'Manba',       ru:'Источник',   en:'Source'    },
-  tryOther: { uz:'Boshqa manbani sinab koʻring', ru:'Попробуйте другой источник', en:'Try another source' },
-  notAvail: { uz:'Kino topilmadi', ru:'Не найдено', en:'Not available' },
+  achievements:{ uz:'Yutuqlar', ru:'Достижения',      en:'Achievements'},
+  completed: { uz:'Tugatildi',   ru:'Завершено',       en:'Completed'  },
+  random:    { uz:'Tasodifiy',   ru:'Случайный',       en:'Random'     },
+  export:    { uz:'Eksport',     ru:'Экспорт',         en:'Export'     },
+  import:    { uz:'Import',      ru:'Импорт',          en:'Import'     },
+  data:      { uz:'Malumotlar',  ru:'Данные',          en:'Data'       },
+  name:      { uz:'Ism',         ru:'Имя',             en:'Name'       },
+  bio:       { uz:'Haqida',      ru:'О себе',          en:'Bio'        },
+  save:      { uz:'Saqlash',     ru:'Сохранить',       en:'Save'       },
+  signInToUse:{ uz:'Kirish kerak',ru:'Требуется вход', en:'Sign in required'},
+  level:     { uz:'Daraja',      ru:'Уровень',         en:'Level'      },
+  prevPage:  { uz:'Oldingi',     ru:'Назад',           en:'Prev'       },
+  nextPage:  { uz:'Keyingi',     ru:'Вперёд',          en:'Next'       },
+  page:      { uz:'Bet',         ru:'Стр.',            en:'Page'       },
+  watchIn:   { uz:'Qaysi tilda koʻrish:', ru:'Смотреть на языке:', en:'Watch in:' },
+  availIn:   { uz:'Mavjud tillar:', ru:'Доступные языки:', en:'Available in:' },
+  selectLang:{ uz:'Til tanlash', ru:'Выбрать язык',    en:'Select language' },
+  source:    { uz:'Manba',       ru:'Источник',        en:'Source'     },
+  tryOther:  { uz:'Boshqa manba sinab koʻring', ru:'Попробуйте другой источник', en:'Try another source' },
+  notAvail:  { uz:'Kino topilmadi', ru:'Не найдено',   en:'Not available' },
+  loading:   { uz:'Yuklanmoqda…', ru:'Загрузка…',      en:'Loading…'   },
+  limitedUZ: { uz:'UZ dublyaj cheklangan', ru:'UZ дубляж ограничен', en:'UZ dubbing limited' },
 };
 
 const RANKS = [
@@ -338,9 +318,8 @@ a{color:inherit;text-decoration:none}
 @keyframes barFill{from{width:0}to{width:var(--bw,100%)}}
 @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @keyframes cardIn{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes imgFadeIn{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:scale(1)}}
 @keyframes pageSlide{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes langPop{0%{transform:scale(.85)}80%{transform:scale(1.05)}100%{transform:scale(1)}}
 
 .fu{animation:fadeUp .38s cubic-bezier(.4,0,.2,1) both}
 .fi{animation:fadeIn .26s ease both}
@@ -398,41 +377,46 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.25)}
 .film-grain{position:fixed;inset:0;z-index:9997;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");opacity:.4}
 
 .syne{font-family:'Syne',system-ui,sans-serif}
-.icon-3d{filter:drop-shadow(0 4px 8px rgba(0,0,0,.6)) drop-shadow(0 1px 2px rgba(255,255,255,.1));transition:transform .2s,filter .2s}
-.icon-3d:hover{transform:translateY(-2px) scale(1.1);filter:drop-shadow(0 8px 16px rgba(0,0,0,.8)) drop-shadow(0 2px 4px ${p}66)}
 .page-sheet{max-width:480px;border-radius:26px 26px 0 0!important}
 @media(min-width:640px){.page-sheet{border-radius:26px!important;margin-bottom:16px}}
 
-/* Pagination */
 .pgn-btn{min-width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.55);cursor:pointer;font-size:13px;font-weight:800;font-family:inherit;transition:all .18s;display:flex;align-items:center;justify-content:center;padding:0 10px;gap:6px}
 .pgn-btn:hover:not(:disabled){background:rgba(255,255,255,.13);transform:translateY(-1px)}
 .pgn-btn:disabled{opacity:.3;cursor:not-allowed}
 .pgn-btn.active{background:linear-gradient(135deg,${p},${s});color:#000;border-color:transparent;box-shadow:0 4px 14px ${p}44;transform:scale(1.08)}
 .pgn-btn.nav{padding:0 16px;gap:8px}
 
-/* Player */
+/* ── Player Modal Layout ── */
 .player-modal{position:fixed;inset:0;z-index:9800;background:#000;display:flex;flex-direction:column}
-.player-header{display:flex;align-items:center;gap:10;padding:0 13px;height:50px;flex-shrink:0;background:rgba(0,0,0,.9);border-bottom:1px solid rgba(255,255,255,.08);z-index:10}
+.player-header{display:flex;align-items:center;gap:10px;padding:0 13px;height:50px;flex-shrink:0;background:rgba(0,0,0,.95);border-bottom:1px solid rgba(255,255,255,.08);z-index:10}
 .player-body{flex:1;display:flex;overflow:hidden;min-height:0}
-.player-video{background:#000;position:relative;overflow:hidden}
+.player-video{background:#000;position:relative;overflow:hidden;display:flex;flex-direction:column}
 .player-info{overflow:hidden;border-top:1px solid rgba(255,255,255,.07)}
 
-/* Mobile: video top, info bottom scrollable */
 @media(max-width:1023px){
   .player-body{flex-direction:column}
-  .player-video{flex-shrink:0;height:240px;width:100%}
+  .player-video{flex-shrink:0;height:calc(100vw * 9/16 + 90px);width:100%;max-height:380px}
   .player-info{flex:1;overflow-y:auto}
 }
-/* Desktop: video left, info right */
 @media(min-width:1024px){
   .player-body{flex-direction:row}
   .player-video{flex:1;height:100%}
   .player-info{width:340px;flex-shrink:0;overflow-y:auto;border-top:none;border-left:1px solid rgba(255,255,255,.07)}
 }
 
-/* Kodik translation picker */
-.trans-pill{padding:5px 12px;border-radius:99px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .18s;border:1.5px solid;white-space:nowrap;flex-shrink:0}
-.trans-pill:hover{transform:translateY(-1px)}
+/* ── Language Tabs ── */
+.lang-bar{display:flex;gap:4px;padding:7px 10px;background:rgba(0,0,0,.9);border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
+.lang-tab{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:10px;border:1.5px solid;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;transition:all .22s;flex-shrink:0;white-space:nowrap}
+.lang-tab:hover{transform:translateY(-1px)}
+.lang-tab.active{animation:langPop .3s ease both}
+
+/* ── Source Bar ── */
+.source-bar{display:flex;align-items:center;gap:4px;padding:5px 10px;background:rgba(0,0,0,.85);border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;flex-wrap:wrap}
+.source-btn{padding:4px 11px;border-radius:99px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;transition:all .18s;border:1.5px solid;white-space:nowrap}
+.source-btn:hover{transform:translateY(-1px)}
+
+/* Lang availability badges on cards */
+.lang-badge{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:5px;font-size:9px;font-weight:800;border:1px solid}
 `;
 
 /* ═══════════════════════════════════════════════
@@ -472,6 +456,34 @@ const StatusBadge = memo(({ status, lang }) => {
   const lb = { watching: t('watching', lang), planned: t('planned', lang), completed: t('watched', lang) };
   return <span style={{ display:'inline-block', borderRadius:7, padding:'2px 8px', fontSize:10, fontWeight:700, background:`${x.c}dd`, color:'#000' }}>{lb[status]}</span>;
 });
+
+/* Language availability badges */
+const LangBadges = memo(({ themeP, onSelect, selectedLang, compact = false }) => (
+  <div style={{ display:'flex', gap:compact?3:4, alignItems:'center', flexWrap:'wrap' }}>
+    {WATCH_LANGS.map(wl => {
+      const active = selectedLang === wl.id;
+      const isUZ = wl.id === 'uz';
+      return (
+        <button key={wl.id}
+          onClick={onSelect ? () => onSelect(wl.id) : undefined}
+          className="lang-badge"
+          style={{
+            borderColor: active ? wl.color : isUZ ? wl.color+'33' : wl.color+'66',
+            background: active ? `${wl.color}33` : isUZ ? 'rgba(255,255,255,.03)' : `${wl.color}11`,
+            color: active ? wl.color : isUZ ? wl.color+'77' : wl.color+'bb',
+            cursor: onSelect ? 'pointer' : 'default',
+            opacity: isUZ ? 0.75 : 1,
+            fontSize: compact ? 9 : 10,
+            padding: compact ? '1px 4px' : '2px 7px',
+            transform: active ? 'scale(1.08)' : 'scale(1)',
+            transition: 'all .18s',
+          }}>
+          {wl.flag} {wl.short}{isUZ && !active ? ' ≈' : ''}
+        </button>
+      );
+    })}
+  </div>
+));
 
 const SkeletonCard = memo(() => (
   <div style={{ borderRadius:16, overflow:'hidden', aspectRatio:'2/3', background:'#0a0a14', position:'relative' }}>
@@ -530,9 +542,7 @@ const Pagination = memo(({ page, setPage, hasMore, loading, themeP, themeS, lang
         {hasMore && <span style={{ color:'rgba(255,255,255,.2)', fontSize:13 }}>…</span>}
       </div>
       <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-        <button className="pgn-btn nav" onClick={() => goTo(page - 1)} disabled={page <= 1 || loading}>
-          ← {t('prevPage', lang)}
-        </button>
+        <button className="pgn-btn nav" onClick={() => goTo(page - 1)} disabled={page <= 1 || loading}>← {t('prevPage', lang)}</button>
         <div style={{ padding:'8px 18px', borderRadius:11, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', fontSize:12, fontWeight:700, color:'rgba(255,255,255,.4)', minWidth:80, textAlign:'center' }}>
           {loading ? <Spinner size={14}/> : <>{t('page', lang)} <span style={{ color:'white', fontWeight:800 }}>{page}</span></>}
         </div>
@@ -582,121 +592,81 @@ const LazyImg = memo(({ src, alt, style, onLoad }) => {
 });
 
 /* ═══════════════════════════════════════════════
-   EMBED PLAYER — FIXED + Language Selector
+   EMBED PLAYER — Language tabs + real sources
 ═══════════════════════════════════════════════ */
-const EmbedPlayer = memo(({ movie, themeP, lang, playerSrc, onPlayerChange }) => {
-  const [started,       setStarted]       = useState(false);
-  const [loading,       setLoading]       = useState(false);
-  const [embedUrl,      setEmbedUrl]      = useState(null);
-  const [err,           setErr]           = useState(null);
-  const [iframeKey,     setIframeKey]     = useState(0);
-  // Kodik translations
-  const [translations,  setTranslations]  = useState([]);
-  const [selTransIdx,   setSelTransIdx]   = useState(0);
-  const [transLoading,  setTransLoading]  = useState(false);
+const EmbedPlayer = memo(({ movie, themeP, lang, playerLang, setPlayerLang }) => {
+  const [started,    setStarted]    = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [embedUrl,   setEmbedUrl]   = useState(null);
+  const [err,        setErr]        = useState(null);
+  const [selSource,  setSelSource]  = useState(0);
+  const [iframeKey,  setIframeKey]  = useState(0);
   const iframeRef = useRef(null);
 
   const tmdbId = movie?.tmdb_id;
   const imdbId = movie?.imdb_code;
-  const currentPlayer = PLAYERS.find(p => p.id === playerSrc) ?? PLAYERS[0];
+  const players = PLAYERS_MAP[playerLang] ?? PLAYERS_MAP.en;
 
-  /* ── Resolve translations list (Kodik only) ── */
-  const loadKodikTranslations = useCallback(async () => {
-    setTransLoading(true);
+  const getUrl = useCallback(async (pl, iid, tid) => {
+    let resolvedImdb = iid;
+    if (!resolvedImdb && tid) {
+      try { resolvedImdb = await getImdbId(tid); } catch {}
+    }
+    const url = pl.url(resolvedImdb, tid);
+    return url || null;
+  }, []);
+
+  const loadUrl = useCallback(async (pl, fallbackIdx = null) => {
+    setLoading(true);
     setErr(null);
-    setTranslations([]);
+    setEmbedUrl(null);
     try {
-      let iid = imdbId;
-      if (!iid && tmdbId) iid = await getImdbId(tmdbId);
-      const results = await kodikSearchAll(iid, tmdbId);
-      if (results.length === 0) {
+      const url = await getUrl(pl, imdbId, tmdbId);
+      if (url) {
+        setEmbedUrl(url);
+      } else {
+        // auto-skip to next if URL is null (e.g. VoidBoost with no IMDB)
+        const pls = PLAYERS_MAP[playerLang] ?? PLAYERS_MAP.en;
+        const nextIdx = fallbackIdx != null ? fallbackIdx + 1 : 1;
+        if (nextIdx < pls.length) {
+          setSelSource(nextIdx);
+          setLoading(false);
+          loadUrl(pls[nextIdx], nextIdx);
+          return;
+        }
         setErr(t('notAvail', lang));
-        setTransLoading(false);
-        return;
       }
-      // Sort: RU dub first
-      const sorted = [...results].sort((a, b) => {
-        const aRu = a.translation?.title?.toLowerCase().includes('дубл') ? 0 : 1;
-        const bRu = b.translation?.title?.toLowerCase().includes('дубл') ? 0 : 1;
-        return aRu - bRu;
-      });
-      setTranslations(sorted);
-      setSelTransIdx(0);
-      const link = sorted[0]?.link;
-      if (link) setEmbedUrl(link.startsWith('//') ? `https:${link}` : link);
-      else setErr(t('notAvail', lang));
     } catch {
       setErr(t('notAvail', lang));
     }
-    setTransLoading(false);
-  }, [imdbId, tmdbId, lang]);
+    setLoading(false);
+  }, [imdbId, tmdbId, lang, getUrl, playerLang]);
 
-  /* ── Resolve non-kodik URL ── */
-  const resolveOtherUrl = useCallback((pl) => {
-    const url = pl.url(imdbId, tmdbId);
-    if (url) { setEmbedUrl(url); setErr(null); }
-    else setErr(t('notAvail', lang));
-  }, [imdbId, tmdbId, lang]);
-
-  /* ── Start playing ── */
+  /* Start playing */
   const handleStart = useCallback(() => {
     setStarted(true);
-    setLoading(true);
-    setEmbedUrl(null);
-    setErr(null);
-    if (currentPlayer.kodik) {
-      loadKodikTranslations().finally(() => setLoading(false));
-    } else {
-      resolveOtherUrl(currentPlayer);
-      setLoading(false);
-    }
-  }, [currentPlayer, loadKodikTranslations, resolveOtherUrl]);
+    loadUrl(players[0]);
+    setSelSource(0);
+  }, [players, loadUrl]);
 
-  /* ── Switch player source ── */
-  const switchPlayer = useCallback((id) => {
-    onPlayerChange(id);
-    setEmbedUrl(null);
-    setErr(null);
-    setTranslations([]);
-    setSelTransIdx(0);
+  /* Switch language tab */
+  const switchLang = useCallback((newLang) => {
+    setPlayerLang(newLang);
     setIframeKey(k => k + 1);
-    const pl = PLAYERS.find(p => p.id === id) ?? PLAYERS[0];
-    if (pl.kodik) {
-      setTransLoading(true);
-      loadKodikTranslations().finally(() => setTransLoading(false));
-    } else {
-      resolveOtherUrl(pl);
-    }
-  }, [onPlayerChange, loadKodikTranslations, resolveOtherUrl]);
+    setSelSource(0);
+    setErr(null);
+    if (!started) return;
+    const pls = PLAYERS_MAP[newLang] ?? PLAYERS_MAP.en;
+    loadUrl(pls[0]);
+  }, [started, setPlayerLang, loadUrl]);
 
-  /* ── Switch translation (Kodik) ── */
-  const switchTranslation = useCallback((idx) => {
-    setSelTransIdx(idx);
-    const item = translations[idx];
-    if (!item?.link) return;
-    const link = item.link.startsWith('//') ? `https:${item.link}` : item.link;
-    setEmbedUrl(link);
+  /* Switch source within current lang */
+  const switchSource = useCallback((idx) => {
+    setSelSource(idx);
     setIframeKey(k => k + 1);
     setErr(null);
-  }, [translations]);
-
-  /* ── Helper: translation display name ── */
-  const getTransLabel = (item) => {
-    const title = item?.translation?.title ?? item?.translation?.type ?? 'Unknown';
-    const meta = LANG_META[title];
-    if (meta) return `${meta.flag} ${title}`;
-    // Try to detect from title
-    if (title.toLowerCase().includes('дубл')) return `🎙 ${title}`;
-    if (title.toLowerCase().includes('суб') || title.toLowerCase().includes('sub')) return `📝 ${title}`;
-    if (title.toLowerCase().includes('укр')) return `🇺🇦 ${title}`;
-    if (title.toLowerCase().includes('каз')) return `🇰🇿 ${title}`;
-    if (title.toLowerCase().includes('узб')) return `🇺🇿 ${title}`;
-    if (title.toLowerCase().includes('тадж')) return `🇹🇯 ${title}`;
-    if (title.toLowerCase().includes('eng') || title.toLowerCase().includes('english')) return `🇬🇧 ${title}`;
-    return `🎬 ${title}`;
-  };
-
-  const isKodik = currentPlayer.kodik;
+    loadUrl(players[idx]);
+  }, [players, loadUrl]);
 
   if (!tmdbId && !imdbId) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:12, padding:24, textAlign:'center', background:'#000' }}>
@@ -705,53 +675,60 @@ const EmbedPlayer = memo(({ movie, themeP, lang, playerSrc, onPlayerChange }) =>
     </div>
   );
 
+  const wlMeta = WATCH_LANGS.find(w => w.id === playerLang) ?? WATCH_LANGS[0];
+
   return (
     <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', background:'#000', minHeight:0 }}>
 
-      {/* ── Top bar: Source selector ── */}
-      <div style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 10px', background:'rgba(0,0,0,.9)', flexShrink:0, borderBottom:'1px solid rgba(255,255,255,.08)', flexWrap:'wrap' }}>
-        <span style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.06em', marginRight:4, flexShrink:0 }}>
-          {t('source', lang)}:
+      {/* ── Language tabs ── */}
+      <div className="lang-bar">
+        <span style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.07em', marginRight:4, flexShrink:0, alignSelf:'center' }}>
+          {t('watchIn', lang)}
         </span>
-        {PLAYERS.map(pl => {
-          const active = pl.id === playerSrc;
+        {WATCH_LANGS.map(wl => {
+          const active = wl.id === playerLang;
+          const isUZ = wl.id === 'uz';
           return (
-            <button key={pl.id}
-              onClick={() => started ? switchPlayer(pl.id) : null}
-              style={{ padding:'4px 12px', borderRadius:99, fontFamily:'inherit', border:`1px solid ${active?themeP+'77':'rgba(255,255,255,.14)'}`, background:active?`linear-gradient(135deg,${themeP},${themeP}88)`:'rgba(255,255,255,.07)', color:active?'#000':'rgba(255,255,255,.55)', cursor:started?'pointer':'default', fontSize:11, fontWeight:800, transition:'all .18s', boxShadow:active?`0 3px 12px ${themeP}55`:'none', opacity:started?1:.6 }}>
-              {pl.n}
+            <button key={wl.id}
+              className={`lang-tab${active ? ' active' : ''}`}
+              onClick={() => switchLang(wl.id)}
+              style={{
+                borderColor: active ? wl.color : 'rgba(255,255,255,.12)',
+                background: active ? `linear-gradient(135deg,${wl.color}44,${wl.color}22)` : 'rgba(255,255,255,.05)',
+                color: active ? wl.color : isUZ ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.55)',
+                boxShadow: active ? `0 3px 14px ${wl.color}44` : 'none',
+              }}>
+              <span style={{ fontSize:15 }}>{wl.flag}</span>
+              <span>{wl.label}</span>
+              {isUZ && !active && <span style={{ fontSize:9, opacity:.5, marginLeft:-2 }}>≈</span>}
+              {active && <span style={{ width:6, height:6, borderRadius:'50%', background:wl.color, marginLeft:-2 }}/>}
             </button>
           );
         })}
       </div>
 
-      {/* ── Kodik translation bar (shown after loading) ── */}
-      {started && isKodik && (transLoading || translations.length > 0) && (
-        <div style={{ flexShrink:0, background:'rgba(0,0,0,.85)', borderBottom:'1px solid rgba(255,255,255,.07)', padding:'6px 10px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-            <span style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.05em', flexShrink:0 }}>
-              🎙 {t('dubbing', lang)}:
-            </span>
-            {transLoading ? (
-              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <Spinner size={14} color={themeP}/>
-                <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{t('loading', lang)}</span>
-              </div>
-            ) : (
-              <div className="ns" style={{ display:'flex', gap:5, overflowX:'auto', flex:1 }}>
-                {translations.map((item, idx) => {
-                  const active = idx === selTransIdx;
-                  return (
-                    <button key={idx} className="trans-pill"
-                      onClick={() => switchTranslation(idx)}
-                      style={{ borderColor: active ? themeP : 'rgba(255,255,255,.15)', background: active ? `linear-gradient(135deg,${themeP}33,${themeP}22)` : 'rgba(255,255,255,.05)', color: active ? themeP : 'rgba(255,255,255,.55)', boxShadow: active ? `0 2px 10px ${themeP}44` : 'none' }}>
-                      {getTransLabel(item)}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+      {/* ── Source selector ── */}
+      {started && (
+        <div className="source-bar">
+          <span style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.25)', textTransform:'uppercase', letterSpacing:'.06em', marginRight:2, flexShrink:0 }}>
+            {t('source', lang)}:
+          </span>
+          {players.map((pl, idx) => {
+            const active = idx === selSource;
+            return (
+              <button key={pl.id}
+                className="source-btn"
+                onClick={() => switchSource(idx)}
+                style={{
+                  borderColor: active ? `${themeP}88` : 'rgba(255,255,255,.12)',
+                  background: active ? `linear-gradient(135deg,${themeP}44,${themeP}22)` : 'rgba(255,255,255,.06)',
+                  color: active ? themeP : 'rgba(255,255,255,.45)',
+                  boxShadow: active ? `0 2px 10px ${themeP}44` : 'none',
+                }}>
+                {pl.n}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -760,68 +737,91 @@ const EmbedPlayer = memo(({ movie, themeP, lang, playerSrc, onPlayerChange }) =>
 
         {/* POSTER / PLAY BUTTON */}
         {!started && (
-          <div style={{ position:'absolute', inset:0, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:20, zIndex:2 }}
+          <div style={{ position:'absolute', inset:0, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, zIndex:2 }}
             onClick={handleStart}>
-            {/* Blurred backdrop */}
             {movie.background_image && (
-              <img src={movie.background_image || movie.medium_cover_image} alt=""
+              <img src={movie.background_image} alt=""
                 style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', filter:'blur(22px) brightness(.3) saturate(1.5)', transform:'scale(1.1)', display:'block' }}/>
             )}
-            <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,.85) 0%, rgba(0,0,0,.2) 100%)' }}/>
-
-            {/* Poster card */}
-            <div style={{ position:'relative', zIndex:3, display:'flex', flexDirection:'column', alignItems:'center', gap:16, padding:'0 24px', maxWidth:340, width:'100%' }}>
+            <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.2) 100%)' }}/>
+            <div style={{ position:'relative', zIndex:3, display:'flex', flexDirection:'column', alignItems:'center', gap:14, padding:'0 24px', maxWidth:320, width:'100%' }}>
               {movie.medium_cover_image && (
-                <div style={{ width:100, borderRadius:16, overflow:'hidden', aspectRatio:'2/3', boxShadow:`0 16px 48px rgba(0,0,0,.8), 0 0 0 2px ${themeP}44`, flexShrink:0 }}>
+                <div style={{ width:88, borderRadius:14, overflow:'hidden', aspectRatio:'2/3', boxShadow:`0 16px 48px rgba(0,0,0,.8), 0 0 0 2px ${themeP}44`, flexShrink:0 }}>
                   <img src={movie.medium_cover_image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
                 </div>
               )}
               <div style={{ textAlign:'center' }}>
-                <p className="syne lc2" style={{ fontSize:18, fontWeight:800, color:'white', marginBottom:4, lineHeight:1.3, textShadow:'0 2px 12px rgba(0,0,0,.8)' }}>{movie.title}</p>
-                <div style={{ display:'flex', gap:6, justifyContent:'center', flexWrap:'wrap' }}>
-                  {movie.year && <span style={{ fontSize:12, color:'rgba(255,255,255,.5)', fontWeight:600 }}>{movie.year}</span>}
+                <p className="syne lc2" style={{ fontSize:17, fontWeight:800, color:'white', marginBottom:6, lineHeight:1.3 }}>{movie.title}</p>
+                <div style={{ display:'flex', gap:5, justifyContent:'center', flexWrap:'wrap', marginBottom:10 }}>
+                  {movie.year && <span style={{ fontSize:11, color:'rgba(255,255,255,.5)', fontWeight:600 }}>{movie.year}</span>}
                   {movie.rating > 0 && <IMDbScore n={movie.rating}/>}
+                </div>
+                {/* Language availability */}
+                <div style={{ display:'flex', gap:5, justifyContent:'center', marginBottom:14 }}>
+                  {WATCH_LANGS.map(wl => {
+                    const isActive = wl.id === playerLang;
+                    const isUZ = wl.id === 'uz';
+                    return (
+                      <button key={wl.id}
+                        onClick={e => { e.stopPropagation(); setPlayerLang(wl.id); }}
+                        style={{ display:'flex', alignItems:'center', gap:4, padding:'5px 10px', borderRadius:8, border:`1.5px solid ${isActive?wl.color:wl.color+'44'}`, background:isActive?`${wl.color}33`:`${wl.color}11`, color:isActive?wl.color:wl.color+'88', cursor:'pointer', fontFamily:'inherit', fontSize:11, fontWeight:800, opacity:isUZ?0.7:1, transition:'all .18s' }}>
+                        <span>{wl.flag}</span>
+                        <span>{wl.short}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <button
-                style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 28px', borderRadius:16, background:`linear-gradient(135deg,${themeP},${themeP}bb)`, border:'none', cursor:'pointer', fontFamily:'inherit', fontWeight:800, fontSize:15, color:'#000', boxShadow:`0 8px 32px ${themeP}66, 0 0 0 0 ${themeP}44`, transition:'all .2s', animation:'glow 2.5s ease infinite' }}
-                onMouseEnter={e => e.currentTarget.style.transform='scale(1.06)'}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'13px 28px', borderRadius:14, background:`linear-gradient(135deg,${wlMeta.color},${wlMeta.color}bb)`, border:'none', cursor:'pointer', fontFamily:'inherit', fontWeight:800, fontSize:15, color:'#fff', boxShadow:`0 8px 32px ${wlMeta.color}66`, transition:'all .2s', animation:'glow 2.5s ease infinite' }}
+                onMouseEnter={e => e.currentTarget.style.transform='scale(1.05)'}
                 onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}>
-                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><polygon points="10,8 10,24 26,16" fill="rgba(0,0,0,.8)"/></svg>
-                {t('watch', lang)}
+                <svg width="20" height="20" viewBox="0 0 32 32" fill="none"><polygon points="10,8 10,24 26,16" fill="rgba(255,255,255,.9)"/></svg>
+                {t('watch', lang)} · {wlMeta.flag} {wlMeta.short}
               </button>
-              <p style={{ fontSize:11, color:'rgba(255,255,255,.35)', fontWeight:600 }}>Kodik · VidSrc · Videasy +</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontWeight:600, textAlign:'center' }}>
+                VidSrc · Alloha · Videasy · Embed.su +
+              </p>
             </div>
           </div>
         )}
 
-        {/* LOADING OVERLAY */}
+        {/* LOADING */}
         {started && loading && (
           <div style={{ position:'absolute', inset:0, zIndex:4, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, background:'rgba(0,0,0,.95)' }}>
             <div style={{ position:'relative' }}>
-              <Spinner size={52} color={themeP}/>
+              <Spinner size={52} color={wlMeta.color}/>
               <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <span style={{ fontSize:18 }}>🎬</span>
+                <span style={{ fontSize:20 }}>{wlMeta.flag}</span>
               </div>
             </div>
             <p style={{ fontSize:14, fontWeight:700, color:'rgba(255,255,255,.6)' }}>{t('loading', lang)}</p>
-            <p style={{ fontSize:12, color:`${themeP}99` }}>{currentPlayer.n}</p>
+            <p style={{ fontSize:12, color:wlMeta.color }}>{wlMeta.flag} {wlMeta.label}</p>
           </div>
         )}
 
-        {/* ERROR OVERLAY */}
+        {/* ERROR */}
         {started && err && !loading && (
           <div style={{ position:'absolute', inset:0, zIndex:4, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, background:'rgba(0,0,0,.95)', padding:24, textAlign:'center' }}>
-            <span style={{ fontSize:48 }}>⚠️</span>
+            <span style={{ fontSize:44 }}>⚠️</span>
             <div>
-              <p style={{ fontSize:15, fontWeight:700, color:'#ef4444', marginBottom:8 }}>{err}</p>
+              <p style={{ fontSize:15, fontWeight:700, color:'#ef4444', marginBottom:6 }}>{err}</p>
               <p style={{ fontSize:12, color:'rgba(255,255,255,.35)' }}>{t('tryOther', lang)}</p>
             </div>
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'center' }}>
-              {PLAYERS.filter(p => p.id !== playerSrc).slice(0, 3).map(pl => (
-                <button key={pl.id} onClick={() => switchPlayer(pl.id)}
-                  style={{ padding:'8px 16px', borderRadius:10, border:`1px solid ${themeP}44`, background:`${themeP}18`, color:themeP, cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:'inherit' }}>
+            <div style={{ display:'flex', gap:7, flexWrap:'wrap', justifyContent:'center' }}>
+              {players.filter((_, i) => i !== selSource).slice(0, 4).map((pl, i) => (
+                <button key={pl.id} onClick={() => switchSource(players.indexOf(pl))}
+                  style={{ padding:'8px 14px', borderRadius:10, border:`1px solid ${themeP}44`, background:`${themeP}18`, color:themeP, cursor:'pointer', fontSize:12, fontWeight:700, fontFamily:'inherit' }}>
                   {pl.n}
+                </button>
+              ))}
+            </div>
+            {/* Try other language */}
+            <div style={{ display:'flex', gap:6, marginTop:4 }}>
+              {WATCH_LANGS.filter(w => w.id !== playerLang).map(wl => (
+                <button key={wl.id} onClick={() => switchLang(wl.id)}
+                  style={{ padding:'6px 12px', borderRadius:9, border:`1px solid ${wl.color}44`, background:`${wl.color}11`, color:wl.color, cursor:'pointer', fontSize:11, fontWeight:700, fontFamily:'inherit' }}>
+                  {wl.flag} {wl.short}
                 </button>
               ))}
             </div>
@@ -832,7 +832,7 @@ const EmbedPlayer = memo(({ movie, themeP, lang, playerSrc, onPlayerChange }) =>
         {started && embedUrl && !loading && !err && (
           <iframe
             ref={iframeRef}
-            key={`${iframeKey}-${playerSrc}-${selTransIdx}`}
+            key={`${iframeKey}-${playerLang}-${selSource}`}
             src={embedUrl}
             allowFullScreen
             allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer"
@@ -849,7 +849,7 @@ const EmbedPlayer = memo(({ movie, themeP, lang, playerSrc, onPlayerChange }) =>
 /* ═══════════════════════════════════════════════
    DETAIL PANEL
 ═══════════════════════════════════════════════ */
-const DetailPanel = memo(({ movie, lib, ratings, notes, favs, wl, themeP, isAuth, onStatus, onRate, onNote, onFav, onWL, onShare, lang }) => {
+const DetailPanel = memo(({ movie, lib, ratings, notes, favs, wl, themeP, isAuth, onStatus, onRate, onNote, onFav, onWL, onShare, lang, playerLang, setPlayerLang }) => {
   const status   = lib[movie?.id]?.status;
   const rating   = ratings[movie?.id];
   const note     = notes[movie?.id] ?? '';
@@ -862,31 +862,58 @@ const DetailPanel = memo(({ movie, lib, ratings, notes, favs, wl, themeP, isAuth
   if (!movie) return null;
   return (
     <div className="ns" style={{ overflowY:'auto', padding:14, display:'flex', flexDirection:'column', gap:11, height:'100%' }}>
-      <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+      <div style={{ display:'flex', gap:11, alignItems:'flex-start' }}>
         {movie.medium_cover_image && (
-          <div style={{ width:76, flexShrink:0, borderRadius:12, overflow:'hidden', aspectRatio:'2/3', boxShadow:`0 8px 28px rgba(0,0,0,.6),0 0 0 2px ${themeP}44` }}>
+          <div style={{ width:72, flexShrink:0, borderRadius:12, overflow:'hidden', aspectRatio:'2/3', boxShadow:`0 8px 28px rgba(0,0,0,.6),0 0 0 2px ${themeP}44` }}>
             <img src={movie.medium_cover_image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
           </div>
         )}
         <div style={{ flex:1, minWidth:0 }}>
-          <p className="syne lc2" style={{ fontSize:16, fontWeight:800, color:'white', lineHeight:1.3, marginBottom:5 }}>{movie.title}</p>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
+          <p className="syne lc2" style={{ fontSize:15, fontWeight:800, color:'white', lineHeight:1.3, marginBottom:5 }}>{movie.title}</p>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:7 }}>
             {movie.rating > 0 && <IMDbScore n={movie.rating}/>}
             {movie.year && <span style={{ fontSize:11, padding:'2px 8px', borderRadius:7, background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.45)', fontWeight:600 }}>{movie.year}</span>}
             {movie.runtime > 0 && <span style={{ fontSize:11, padding:'2px 8px', borderRadius:7, background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.45)', fontWeight:600 }}>{movie.runtime}m</span>}
-            {movie.language && <span style={{ fontSize:11, padding:'2px 8px', borderRadius:7, background:`${themeP}22`, color:themeP, fontWeight:700 }}>{movie.language.toUpperCase()}</span>}
           </div>
           {movie.genres?.length > 0 && (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-              {movie.genres.map(g => <span key={g} style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:`${themeP}18`, color:`${themeP}cc`, border:`1px solid ${themeP}30`, fontWeight:600 }}>{g}</span>)}
+            <div style={{ display:'flex', flexWrap:'wrap', gap:3, marginBottom:7 }}>
+              {movie.genres.map(g => <span key={g} style={{ fontSize:10, padding:'2px 7px', borderRadius:20, background:`${themeP}18`, color:`${themeP}cc`, border:`1px solid ${themeP}30`, fontWeight:600 }}>{g}</span>)}
             </div>
           )}
         </div>
       </div>
 
+      {/* ── Language selector ── */}
+      <div style={{ padding:11, borderRadius:13, background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)' }}>
+        <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,.35)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:8 }}>
+          {t('availIn', lang)}
+        </p>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {WATCH_LANGS.map(wl => {
+            const active = playerLang === wl.id;
+            const isUZ = wl.id === 'uz';
+            return (
+              <button key={wl.id}
+                onClick={() => setPlayerLang(wl.id)}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:10, border:`1.5px solid ${active ? wl.color : wl.color+'33'}`, background: active ? `${wl.color}28` : `${wl.color}0a`, color: active ? wl.color : wl.color+'77', cursor:'pointer', fontFamily:'inherit', fontSize:11, fontWeight:800, transition:'all .2s', opacity:isUZ?0.8:1 }}>
+                <span style={{ fontSize:14 }}>{wl.flag}</span>
+                <span>{wl.label}</span>
+                {isUZ && <span style={{ fontSize:9, opacity:.6 }}>≈</span>}
+                {active && <span style={{ fontSize:11 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        {playerLang === 'uz' && (
+          <p style={{ fontSize:10, color:'rgba(34,197,94,.5)', marginTop:6, fontStyle:'italic' }}>
+            ⚠ {t('limitedUZ', lang)}
+          </p>
+        )}
+      </div>
+
       {movie.description_full && (
-        <div style={{ padding:12, borderRadius:12, background:'rgba(255,255,255,.04)', border:`1px solid ${themeP}22` }}>
-          <p style={{ fontSize:11, fontWeight:700, color:themeP, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>{t('synopsis', lang)}</p>
+        <div style={{ padding:11, borderRadius:12, background:'rgba(255,255,255,.04)', border:`1px solid ${themeP}22` }}>
+          <p style={{ fontSize:11, fontWeight:700, color:themeP, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>{t('synopsis', lang)}</p>
           <p className="lc3" style={{ fontSize:12, lineHeight:1.68, color:'rgba(255,255,255,.6)' }}>{movie.description_full}</p>
         </div>
       )}
@@ -894,7 +921,7 @@ const DetailPanel = memo(({ movie, lib, ratings, notes, favs, wl, themeP, isAuth
       <div>
         <p style={{ fontSize:10, fontWeight:700, opacity:.35, textTransform:'uppercase', letterSpacing:'.07em', marginBottom:6 }}>Status</p>
         <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-          {[['watching','👁 ' + t('watching', lang),'#60a5fa'],['planned','⏳ ' + t('planned', lang),'#f59e0b'],['completed','✅ ' + t('watched', lang),'#22c55e']].map(([k, l, c]) => (
+          {[['watching','👁 '+t('watching',lang),'#60a5fa'],['planned','⏳ '+t('planned',lang),'#f59e0b'],['completed','✅ '+t('watched',lang),'#22c55e']].map(([k,l,c]) => (
             <button key={k} onClick={() => onStatus(movie, k)} style={btn(status===k, c)}>{l}</button>
           ))}
         </div>
@@ -918,8 +945,8 @@ const DetailPanel = memo(({ movie, lib, ratings, notes, favs, wl, themeP, isAuth
       )}
 
       <div style={{ display:'flex', gap:7 }}>
-        <button onClick={() => onWL(movie)} style={{ ...btn(inWL, themeP), flex:1 }}>{inWL ? '✓ ' + t('watchlist', lang) : '+ ' + t('watchlist', lang)}</button>
-        <button onClick={() => onFav(movie)} style={{ ...btn(isFav, '#f43f5e'), flex:1 }}>{isFav ? '♥ ' + t('favs', lang) : '♡ ' + t('favs', lang)}</button>
+        <button onClick={() => onWL(movie)} style={{ ...btn(inWL, themeP), flex:1 }}>{inWL ? '✓ '+t('watchlist',lang) : '+ '+t('watchlist',lang)}</button>
+        <button onClick={() => onFav(movie)} style={{ ...btn(isFav, '#f43f5e'), flex:1 }}>{isFav ? '♥ '+t('favs',lang) : '♡ '+t('favs',lang)}</button>
       </div>
       <button onClick={() => onShare(movie)} className="btn-g" style={{ padding:'9px', borderRadius:11, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
         <span>📤</span><span>{t('share', lang)}</span>
@@ -935,35 +962,40 @@ const DetailPanel = memo(({ movie, lib, ratings, notes, favs, wl, themeP, isAuth
 });
 
 /* ═══════════════════════════════════════════════
-   ITEM MODAL — FIXED LAYOUT
+   ITEM MODAL
 ═══════════════════════════════════════════════ */
 const ItemModal = memo(({ movie, ...rest }) => {
   if (!movie) return null;
-  const { themeP, onClose, lang, playerSrc, onPlayerChange } = rest;
+  const { themeP, onClose, lang, playerLang, setPlayerLang } = rest;
   return (
     <div className="fi player-modal">
-      {/* Header */}
-      <div className="player-header" style={{ display:'flex', alignItems:'center', gap:10, padding:'0 13px', height:50, flexShrink:0, background:'rgba(0,0,0,.92)', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
+      <div className="player-header">
         <button onClick={onClose} style={{ width:34, height:34, borderRadius:10, border:'none', background:'rgba(255,255,255,.08)', cursor:'pointer', color:'white', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontFamily:'inherit' }}>←</button>
         <p className="lc1 syne" style={{ fontSize:14, fontWeight:700, color:'white', flex:1 }}>{movie.title}</p>
         {movie.year && <span style={{ fontSize:12, color:'rgba(255,255,255,.3)', fontWeight:600, flexShrink:0 }}>{movie.year}</span>}
         {movie.rating > 0 && <IMDbScore n={movie.rating}/>}
+        {/* Lang badges in header */}
+        <div style={{ display:'flex', gap:3 }}>
+          {WATCH_LANGS.map(wl => {
+            const active = playerLang === wl.id;
+            return (
+              <button key={wl.id}
+                onClick={() => setPlayerLang(wl.id)}
+                title={wl.label}
+                style={{ fontSize:16, background:'none', border:`1.5px solid ${active?wl.color:'rgba(255,255,255,.1)'}`, borderRadius:7, padding:'3px 5px', cursor:'pointer', opacity:active?1:0.5, transition:'all .18s', lineHeight:1 }}>
+                {wl.flag}
+              </button>
+            );
+          })}
+        </div>
         <button onClick={onClose} style={{ width:32, height:32, borderRadius:10, border:'1px solid rgba(239,68,68,.35)', background:'rgba(239,68,68,.1)', cursor:'pointer', color:'#f87171', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontFamily:'inherit' }}>✕</button>
       </div>
-
-      {/* Body */}
       <div className="player-body">
         <div className="player-video">
-          <EmbedPlayer
-            movie={movie}
-            themeP={themeP}
-            lang={lang}
-            playerSrc={playerSrc}
-            onPlayerChange={onPlayerChange}
-          />
+          <EmbedPlayer movie={movie} themeP={themeP} lang={lang} playerLang={playerLang} setPlayerLang={setPlayerLang}/>
         </div>
         <div className="player-info">
-          <DetailPanel movie={movie} {...rest}/>
+          <DetailPanel movie={movie} {...rest} playerLang={playerLang} setPlayerLang={setPlayerLang}/>
         </div>
       </div>
     </div>
@@ -1000,11 +1032,17 @@ const MovieCard = memo(({ movie, onClick, onFav, faved, status, userRating, them
             {movie.year && <span style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,.4)' }}>{movie.year}</span>}
             {movie.runtime > 0 && <span style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,.3)' }}>{movie.runtime} {minLbl}</span>}
           </div>
-          {genreLabels.length > 0 && (
-            <div style={{ display:'flex', gap:4, marginTop:4, flexWrap:'wrap' }}>
-              {genreLabels.map(g => <span key={g} style={{ fontSize:9, padding:'1px 6px', borderRadius:20, background:`${themeP}22`, color:`${themeP}cc`, border:`1px solid ${themeP}25`, fontWeight:700 }}>{g}</span>)}
-            </div>
-          )}
+          {/* Language availability badges */}
+          <div style={{ display:'flex', gap:3, marginTop:5 }}>
+            {WATCH_LANGS.map(wl => {
+              const isUZ = wl.id === 'uz';
+              return (
+                <span key={wl.id} style={{ fontSize:9, padding:'1px 4px', borderRadius:5, border:`1px solid ${wl.color}${isUZ?'33':'55'}`, background:`${wl.color}${isUZ?'08':'15'}`, color:`${wl.color}${isUZ?'66':'cc'}`, fontWeight:800 }}>
+                  {wl.flag}{wl.short}
+                </span>
+              );
+            })}
+          </div>
         </div>
         <button onClick={e => { e.stopPropagation(); onFav(movie); }} style={{ position:'absolute', bottom:9, right:9, width:30, height:30, borderRadius:9, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, background:faved?'#f43f5e99':'rgba(0,0,0,.55)', backdropFilter:'blur(8px)', transition:'all .2s', color:'white', zIndex:2, animation:faved?'heartPop .3s ease':'' }}>
           {faved ? '♥' : '♡'}
@@ -1088,9 +1126,15 @@ const SearchOverlay = memo(({ onClose, themeP, onOpen, lang }) => {
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <p className="lc1 syne" style={{ fontSize:14, fontWeight:700, color:'white', marginBottom:4 }}>{m.title}</p>
-                  <div style={{ display:'flex', gap:5 }}>
+                  <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
                     {m.rating > 0 && <IMDbScore n={m.rating}/>}
                     {m.year && <span style={{ fontSize:11, padding:'1px 7px', borderRadius:6, background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.4)', fontWeight:600 }}>{m.year}</span>}
+                    {/* lang badges */}
+                    <div style={{ display:'flex', gap:2 }}>
+                      {WATCH_LANGS.map(wl => (
+                        <span key={wl.id} style={{ fontSize:9, padding:'1px 4px', borderRadius:4, border:`1px solid ${wl.color}44`, background:`${wl.color}11`, color:`${wl.color}bb`, fontWeight:800 }}>{wl.flag}{wl.short}</span>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <span style={{ opacity:.2 }}>→</span>
@@ -1468,7 +1512,7 @@ const AuthForm = memo(({ sb, themeP, onSuccess }) => {
         const s = { access_token:r.access_token, refresh_token:r.refresh_token, user_id:r.user?.id, email:r.user?.email, expires_at:Date.now()+3600*1000 };
         LS.set(SESS_KEY, JSON.stringify(s)); onSuccess(r);
       } else {
-        if (r?.user?.id) { setErr('📧 Check email to confirm, then sign in.'); }
+        if (r?.user?.id) setErr('📧 Check email to confirm, then sign in.');
         else setErr(r?.error_description || 'Registration failed');
       }
     } catch { setErr('Connection error'); } finally { setLd(false); }
@@ -1532,7 +1576,7 @@ export default function App() {
   const [curView,    setCurView]    = useState('home');
   const [curTheme,   setCurTheme]   = useState('noir');
   const [lang,       setLang]       = useState('en');
-  const [playerSrc,  setPlayerSrc]  = useState('kodik');
+  const [playerLang, setPlayerLang] = useState('ru'); // default Russian (most popular)
   const [selMovie,   setSelMovie]   = useState(null);
   const [toasts,     setToasts]     = useState([]);
   const [achPop,     setAchPop]     = useState(null);
@@ -1559,10 +1603,8 @@ export default function App() {
 
   const setView = useCallback((v) => setCurView(v), []);
 
-  /* Boot */
   useEffect(() => { const ti = setTimeout(() => setBoot(false), 1400); return () => clearTimeout(ti); }, []);
 
-  /* CSS */
   useEffect(() => {
     let el = document.getElementById('ch-css');
     if (!el) { el = document.createElement('style'); el.id = 'ch-css'; document.head.appendChild(el); }
@@ -1570,7 +1612,6 @@ export default function App() {
     document.body.style.background = theme.b;
   }, [curTheme, theme]);
 
-  /* Keyboard */
   useEffect(() => {
     const h = e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(x => !x); }
@@ -1580,14 +1621,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', h);
   }, []);
 
-  /* Toast */
   const toast = useCallback((msg, type = 'success') => {
     const id = Date.now() + Math.random();
     setToasts(p => [...p.slice(-3), { id, msg, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
   }, []);
 
-  /* XP */
   const addXP = useCallback((amt, key) => {
     if (!isAuth) return;
     const k = `${key}_${today()}`;
@@ -1596,7 +1635,6 @@ export default function App() {
     setUser(p => ({ ...p, xp:p.xp + amt }));
   }, [isAuth, xpToday]);
 
-  /* Achievements */
   const unlockAch = useCallback((id) => {
     if (!isAuth) return;
     if (achsRef.current.includes(id)) return;
@@ -1610,7 +1648,6 @@ export default function App() {
     });
   }, [isAuth]);
 
-  /* Stats */
   const stats = useMemo(() => {
     const lv  = Math.floor(user.xp / 100) + 1;
     const lv2 = Object.values(library);
@@ -1631,7 +1668,6 @@ export default function App() {
     };
   }, [user.xp, library, ratings, notes]);
 
-  /* Ach triggers */
   useEffect(() => {
     if (!isAuth) return;
     if (stats.watched >= 1)   unlockAch('first');
@@ -1648,7 +1684,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stats, isAuth, favs.length, shareCount]);
 
-  /* Home content */
   useEffect(() => {
     setPopular([]); setLatest([]); setTopRated([]); setHomeLoaded(false);
     (async () => {
@@ -1669,13 +1704,12 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
-  /* Browse path */
   const browsePathFor = useCallback((pg) => {
     const sortMap = { rating:'vote_average.desc', download_count:'popularity.desc', date_added:'release_date.desc', like_count:'vote_count.desc' };
     const tmdbSort = sortMap[sort] ?? 'popularity.desc';
     let path = `/discover/movie?page=${pg}&sort_by=${tmdbSort}&vote_count.gte=100`;
     if (filters.genre) { const gid = GENRE_TO_TMDB[filters.genre]; if (gid) path += `&with_genres=${gid}`; }
-    if (filters.year)         path += `&primary_release_year=${filters.year}`;
+    if (filters.year)          path += `&primary_release_year=${filters.year}`;
     if (filters.ratingMin > 0) path += `&vote_average.gte=${filters.ratingMin}`;
     return path;
   }, [sort, filters]);
@@ -1690,19 +1724,19 @@ export default function App() {
     }).catch(() => setLoadBr(false));
   }, [curView, page, browsePathFor, lang]);
 
-  /* Auth helpers */
   const applyUserData = useCallback((data) => {
     if (!data) return;
-    if (data.user)     setUser(data.user);
-    if (data.library)  setLibrary(data.library);
-    if (data.ratings)  setRatings(data.ratings);
+    if (data.user)       setUser(data.user);
+    if (data.library)    setLibrary(data.library);
+    if (data.ratings)    setRatings(data.ratings);
     const la = data.achs ?? []; achsRef.current = la; setAchs(la);
-    if (data.favs)     setFavs(data.favs);
-    if (data.wl)       setWl(data.wl);
-    if (data.notes)    setNotes(data.notes);
-    if (data.history)  setHistD(data.history);
-    if (data.theme)    setCurTheme(data.theme);
-    if (data.lang)     setLang(data.lang);
+    if (data.favs)       setFavs(data.favs);
+    if (data.wl)         setWl(data.wl);
+    if (data.notes)      setNotes(data.notes);
+    if (data.history)    setHistD(data.history);
+    if (data.theme)      setCurTheme(data.theme);
+    if (data.lang)       setLang(data.lang);
+    if (data.playerLang) setPlayerLang(data.playerLang);
     if (data.shareCount) setShareCount(data.shareCount);
   }, []);
 
@@ -1741,14 +1775,13 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb]);
 
-  /* Save */
   const latestRef = useRef({});
-  useEffect(() => { latestRef.current = { isAuth, session, sb, user, library, ratings, favs, wl, notes, histD, achs, curTheme, lang, shareCount }; });
+  useEffect(() => { latestRef.current = { isAuth, session, sb, user, library, ratings, favs, wl, notes, histD, achs, curTheme, lang, playerLang, shareCount }; });
 
   const save = useCallback(async () => {
     const d = latestRef.current;
     if (!d.isAuth || !d.session || !d.sb) return;
-    const payload = { user:d.user, library:d.library, ratings:d.ratings, favs:d.favs, wl:d.wl, notes:d.notes, history:d.histD, achs:d.achs, theme:d.curTheme, lang:d.lang, shareCount:d.shareCount };
+    const payload = { user:d.user, library:d.library, ratings:d.ratings, favs:d.favs, wl:d.wl, notes:d.notes, history:d.histD, achs:d.achs, theme:d.curTheme, lang:d.lang, playerLang:d.playerLang, shareCount:d.shareCount };
     setSyncSt('syncing');
     try { const ok = await d.sb.upsertData(d.session.access_token, d.session.user_id, payload); setSyncSt(ok ? 'synced' : 'error'); }
     catch { setSyncSt('error'); }
@@ -1760,9 +1793,8 @@ export default function App() {
     clearTimeout(saveRef.current);
     saveRef.current = setTimeout(save, SAVE_DELAY);
     return () => clearTimeout(saveRef.current);
-  }, [user, library, ratings, favs, wl, notes, histD, achs, curTheme, lang, isAuth, session]);
+  }, [user, library, ratings, favs, wl, notes, histD, achs, curTheme, lang, playerLang, isAuth, session]);
 
-  /* Logout */
   const doLogout = useCallback(async () => {
     if (session?.access_token && sb) { try { await sb.signOut(session.access_token); } catch {} }
     LS.del(SESS_KEY);
@@ -1773,7 +1805,6 @@ export default function App() {
     toast('Goodbye! 👋', 'info');
   }, [session, sb, toast]);
 
-  /* Movie actions */
   const openMovie = useCallback((movie) => {
     setSelMovie(movie);
     setHistD(p => [{ ...movie, viewedAt:new Date().toLocaleString() }, ...p.filter(h => h.id !== movie.id)].slice(0, 100));
@@ -1860,7 +1891,6 @@ export default function App() {
     r.readAsText(f);
   }, [toast]);
 
-  /* Derived */
   const favIds = useMemo(() => new Set(favs.map(f => f.id)), [favs]);
   const wlIds  = useMemo(() => new Set(wl.map(w => w.id)), [wl]);
   const hasFilters = filters.genre || filters.year || filters.ratingMin > 0;
@@ -1869,8 +1899,8 @@ export default function App() {
   const dpProps = useMemo(() => ({
     lib:library, ratings, notes, favs:favIds, wl:wlIds, themeP:theme.p, isAuth,
     onStatus:handleStatus, onRate:handleRate, onNote:handleNote, onFav:handleFav, onWL:handleWL, onShare:handleShare,
-    lang, playerSrc, onPlayerChange: setPlayerSrc,
-  }), [library, ratings, notes, favIds, wlIds, theme.p, isAuth, handleStatus, handleRate, handleNote, handleFav, handleWL, handleShare, lang, playerSrc]);
+    lang, playerLang, setPlayerLang,
+  }), [library, ratings, notes, favIds, wlIds, theme.p, isAuth, handleStatus, handleRate, handleNote, handleFav, handleWL, handleShare, lang, playerLang]);
 
   const displayData = useMemo(() => {
     if (curView==='library')   return Object.values(library);
@@ -1881,10 +1911,8 @@ export default function App() {
     return [];
   }, [curView, library, favs, wl, histD, browse]);
 
-  /* ════ SETUP ════ */
   if (!sbCfg) return <SetupScreen onSave={cfg => setSbCfg(cfg)}/>;
 
-  /* ════ BOOT ════ */
   if (boot) return (
     <div style={{ position:'fixed', inset:0, background:theme.b, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:28, fontFamily:'DM Sans,system-ui,sans-serif' }}>
       <div style={{ position:'relative', width:100, height:100 }}>
@@ -1901,13 +1929,13 @@ export default function App() {
   );
 
   const NAV = [
-    { k:'home',      l:t('home',lang),       i:'🏠' },
-    { k:'browse',    l:t('browse',lang),      i:'🎬' },
-    { k:'favs',      l:t('favs',lang),        i:'❤️' },
-    { k:'watchlist', l:t('watchlist',lang),   i:'🔖' },
-    { k:'library',   l:t('library',lang),     i:'📚' },
-    { k:'history',   l:t('history',lang),     i:'🕐' },
-    { k:'stats',     l:t('stats',lang),       i:'📊' },
+    { k:'home',      l:t('home',lang),      i:'🏠' },
+    { k:'browse',    l:t('browse',lang),     i:'🎬' },
+    { k:'favs',      l:t('favs',lang),       i:'❤️' },
+    { k:'watchlist', l:t('watchlist',lang),  i:'🔖' },
+    { k:'library',   l:t('library',lang),    i:'📚' },
+    { k:'history',   l:t('history',lang),    i:'🕐' },
+    { k:'stats',     l:t('stats',lang),      i:'📊' },
   ];
 
   return (
@@ -1918,7 +1946,6 @@ export default function App() {
 
       <Toasts items={toasts}/>
 
-      {/* Achievement popup */}
       {achPop && (
         <div className="ap" style={{ position:'fixed', bottom:90, right:14, zIndex:9700, maxWidth:280, width:'calc(100vw - 28px)' }}>
           <div className="glass-dark" style={{ borderRadius:18, padding:14, border:`1.5px solid ${theme.p}55`, boxShadow:`0 20px 60px rgba(0,0,0,.7)` }}>
@@ -1934,7 +1961,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Overlays */}
       {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} themeP={theme.p} onOpen={openMovie} lang={lang}/>}
       {filterOpen && <FilterPanel filters={filters} onChange={f => { setFilters(f); setPage(1); }} themeP={theme.p} onClose={() => setFilterOpen(false)} lang={lang}/>}
       {selMovie && <ItemModal movie={selMovie} onClose={() => setSelMovie(null)} {...dpProps}/>}
@@ -1980,7 +2006,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ═══ HEADER ═══ */}
+      {/* HEADER */}
       <header style={{ position:'sticky', top:0, zIndex:700, background:`${theme.b}ee`, backdropFilter:'blur(28px) saturate(200%)', borderBottom:'1px solid rgba(255,255,255,.07)' }}>
         <div style={{ maxWidth:1800, margin:'0 auto', padding:'0 16px', height:58, display:'flex', alignItems:'center', gap:10 }}>
           <div onClick={() => { setView('home'); setFilters({ genre:'', year:null, ratingMin:0, quality:'' }); setPage(1); }} style={{ display:'flex', alignItems:'center', gap:9, cursor:'pointer', flexShrink:0 }}>
@@ -2009,6 +2035,19 @@ export default function App() {
           </div>
 
           <div style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0, marginLeft:'auto' }}>
+            {/* Quick lang switcher in header */}
+            <div className="desk" style={{ display:'flex', gap:3, borderRadius:10, overflow:'hidden', border:'1px solid rgba(255,255,255,.1)', flexShrink:0 }}>
+              {WATCH_LANGS.map(wl => {
+                const active = playerLang === wl.id;
+                return (
+                  <button key={wl.id} onClick={() => setPlayerLang(wl.id)} title={`Watch in ${wl.label}`}
+                    style={{ width:34, height:30, border:'none', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:800, transition:'all .2s', background:active?`linear-gradient(135deg,${wl.color},${wl.color}99)`:'rgba(255,255,255,.05)', color:active?'#fff':'rgba(255,255,255,.38)' }}>
+                    {wl.flag}
+                  </button>
+                );
+              })}
+            </div>
+
             <button onClick={() => setFilterOpen(true)} style={{ width:36, height:36, borderRadius:11, border:`1px solid ${hasFilters?theme.p+'55':'rgba(255,255,255,.1)'}`, background:hasFilters?`${theme.p}18`:'rgba(255,255,255,.07)', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', transition:'all .2s', color:hasFilters?theme.p:'rgba(255,255,255,.45)', position:'relative', fontFamily:'inherit' }}>
               ⚙{hasFilters && <div style={{ position:'absolute', top:4, right:4, width:6, height:6, borderRadius:'50%', background:theme.p }}/>}
             </button>
@@ -2070,12 +2109,30 @@ export default function App() {
         </div>
       )}
 
-      {/* ═══ LAYOUT ═══ */}
       <div style={{ maxWidth:1800, margin:'0 auto', padding:'12px 16px', display:'flex', gap:14, alignItems:'flex-start', position:'relative', zIndex:2 }} className="main-area">
 
         {/* Sidebar */}
         <aside className="sidebar" style={{ width:210, flexShrink:0, position:'sticky', top:130 }}>
           <div className="card" style={{ borderRadius:20, padding:14, display:'flex', flexDirection:'column', gap:13 }}>
+            {/* Watch language selector */}
+            <div>
+              <p style={{ fontSize:9, fontWeight:800, opacity:.3, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:8 }}>{t('watchIn', lang)}</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                {WATCH_LANGS.map(wl => {
+                  const active = playerLang === wl.id;
+                  const isUZ = wl.id === 'uz';
+                  return (
+                    <button key={wl.id} onClick={() => setPlayerLang(wl.id)}
+                      style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:10, border:`1.5px solid ${active?wl.color+'55':'transparent'}`, cursor:'pointer', fontFamily:'inherit', fontSize:12, fontWeight:700, transition:'all .2s', background:active?`${wl.color}18`:'rgba(255,255,255,.04)', color:active?wl.color:'rgba(255,255,255,.4)', textAlign:'left', opacity:isUZ?0.8:1 }}>
+                      <span style={{ fontSize:16 }}>{wl.flag}</span>
+                      <span>{wl.label}</span>
+                      {active && <span style={{ marginLeft:'auto', fontSize:11 }}>✓</span>}
+                      {isUZ && !active && <span style={{ marginLeft:'auto', fontSize:9, opacity:.5 }}>≈</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div>
               <p style={{ fontSize:9, fontWeight:800, opacity:.3, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:8 }}>Sort By</p>
               <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
@@ -2086,7 +2143,7 @@ export default function App() {
             </div>
             <div>
               <p style={{ fontSize:9, fontWeight:800, opacity:.3, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:8 }}>Genres</p>
-              <div className="ns" style={{ display:'flex', flexDirection:'column', gap:3, maxHeight:300, overflowY:'auto' }}>
+              <div className="ns" style={{ display:'flex', flexDirection:'column', gap:3, maxHeight:260, overflowY:'auto' }}>
                 <button onClick={() => { setFilters(p => ({ ...p, genre:'' })); setView('browse'); }} style={{ padding:'7px 10px', borderRadius:9, border:`1px solid ${!filters.genre?theme.p+'44':'transparent'}`, background:!filters.genre?`${theme.p}18`:'rgba(255,255,255,.04)', color:!filters.genre?theme.p:'rgba(255,255,255,.38)', cursor:'pointer', fontSize:11, fontWeight:700, fontFamily:'inherit', textAlign:'left' }}>🎬 {t('all',lang)}</button>
                 {GENRES.map(g => (
                   <button key={g.id} onClick={() => { setFilters(p => ({ ...p, genre:g.id })); setView('browse'); setPage(1); }} style={{ padding:'7px 10px', borderRadius:9, border:`1px solid ${filters.genre===g.id?theme.p+'44':'transparent'}`, background:filters.genre===g.id?`${theme.p}18`:'rgba(255,255,255,.04)', color:filters.genre===g.id?theme.p:'rgba(255,255,255,.38)', cursor:'pointer', fontSize:11, fontWeight:700, fontFamily:'inherit', textAlign:'left', display:'flex', alignItems:'center', gap:6 }}>
@@ -2113,7 +2170,7 @@ export default function App() {
           </div>
         </aside>
 
-        {/* Main content */}
+        {/* Main */}
         <main style={{ flex:1, minWidth:0 }}>
 
           {/* HOME */}
@@ -2126,10 +2183,16 @@ export default function App() {
                   <img className="hero-img" src={topRated[0].background_image || topRated[0].large_cover_image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top', transition:'transform .6s ease', display:'block' }}/>
                   <div style={{ position:'absolute', inset:0, background:`linear-gradient(to right, rgba(0,0,0,.9) 0%, rgba(0,0,0,.5) 50%, transparent 100%), linear-gradient(to top, rgba(0,0,0,.8) 0%, transparent 60%)` }}/>
                   <div style={{ position:'absolute', inset:0, padding:'28px 32px', display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
-                    <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+                    <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap', alignItems:'center' }}>
                       {topRated[0].rating > 0 && <IMDbScore n={topRated[0].rating}/>}
                       {topRated[0].year && <span style={{ fontSize:11, padding:'2px 8px', borderRadius:7, background:'rgba(255,255,255,.12)', color:'rgba(255,255,255,.7)', fontWeight:700 }}>{topRated[0].year}</span>}
                       {topRated[0].genres?.slice(0,2).map(g => <span key={g} style={{ fontSize:11, padding:'2px 8px', borderRadius:7, background:`${theme.p}33`, color:theme.p, fontWeight:700 }}>{g}</span>)}
+                      {/* Available languages badge */}
+                      <div style={{ display:'flex', gap:3 }}>
+                        {WATCH_LANGS.map(wl => (
+                          <span key={wl.id} style={{ fontSize:11, padding:'2px 6px', borderRadius:6, border:`1px solid ${wl.color}55`, background:`${wl.color}22`, color:wl.color }}>{wl.flag}{wl.short}</span>
+                        ))}
+                      </div>
                     </div>
                     <h2 className="syne" style={{ fontSize:28, fontWeight:800, color:'white', marginBottom:8, lineHeight:1.2, maxWidth:500 }}>{topRated[0].title}</h2>
                     <p style={{ fontSize:12, color:'rgba(255,255,255,.55)', lineHeight:1.6, maxWidth:420, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{topRated[0].summary}</p>
@@ -2230,7 +2293,10 @@ export default function App() {
                         <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
                           {m.rating > 0 && <IMDbScore n={m.rating}/>}
                           {m.year && <span style={{ fontSize:10, padding:'1px 7px', borderRadius:6, background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.4)', fontWeight:600 }}>{m.year}</span>}
-                          {m.runtime > 0 && <span style={{ fontSize:10, padding:'1px 7px', borderRadius:6, background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.4)', fontWeight:600 }}>{m.runtime}m</span>}
+                          {/* lang badges */}
+                          {WATCH_LANGS.map(wl => (
+                            <span key={wl.id} style={{ fontSize:9, padding:'1px 5px', borderRadius:5, border:`1px solid ${wl.color}44`, background:`${wl.color}11`, color:`${wl.color}bb`, fontWeight:800 }}>{wl.flag}{wl.short}</span>
+                          ))}
                         </div>
                         {m.summary && <p className="lc2" style={{ fontSize:11, color:'rgba(255,255,255,.32)', lineHeight:1.55, marginTop:4 }}>{m.summary}</p>}
                       </div>
@@ -2301,11 +2367,11 @@ export default function App() {
       <nav className="mob" style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:600, background:`${theme.b}f5`, backdropFilter:'blur(24px) saturate(200%)', borderTop:'1px solid rgba(255,255,255,.08)', paddingBottom:'env(safe-area-inset-bottom,0)', justifyContent:'center' }}>
         <div style={{ display:'flex', alignItems:'center', width:'100%', maxWidth:460, padding:'6px 8px' }}>
           {[
-            { k:'home', i:'🏠', l:t('home',lang) },
-            { k:'browse', i:'🎬', l:t('browse',lang) },
-            { k:'favs', i:'❤️', l:t('favs',lang) },
+            { k:'home',    i:'🏠', l:t('home',lang)    },
+            { k:'browse',  i:'🎬', l:t('browse',lang)  },
+            { k:'favs',    i:'❤️', l:t('favs',lang)   },
             { k:'library', i:'📚', l:t('library',lang) },
-            { k:'stats', i:'📊', l:t('stats',lang) },
+            { k:'stats',   i:'📊', l:t('stats',lang)   },
           ].map(v => (
             <button key={v.k} onClick={() => setView(v.k)} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'6px 0', border:'none', borderRadius:13, cursor:'pointer', fontFamily:'inherit', background:curView===v.k?`${theme.p}1e`:'transparent', transition:'all .2s' }}>
               <span style={{ fontSize:18 }}>{v.i}</span>
